@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 import cv2
+import numpy as np
 
 from .configuracion import (
     ConfiguracionEPP,
@@ -104,6 +105,55 @@ def leer_argumentos() -> argparse.Namespace:
         dest="dispositivo",
         default="cpu",
         help="cpu, 0, 0,1, etc.",
+    )
+    parser.add_argument(
+        "--tamano",
+        "--imgsz",
+        dest="tamano",
+        type=int,
+        default=416,
+        help="Tamano de inferencia. Menor es mas rapido; 416 recomendado para CPU.",
+    )
+    parser.add_argument(
+        "--saltar-frames",
+        dest="saltar_frames",
+        type=int,
+        default=1,
+        help="Procesa 1 de cada N frames en video/camara. Usa 2 o 3 si va lento.",
+    )
+    parser.add_argument(
+        "--ancho-camara",
+        dest="ancho_camara",
+        type=int,
+        default=640,
+        help="Ancho solicitado para webcam.",
+    )
+    parser.add_argument(
+        "--alto-camara",
+        dest="alto_camara",
+        type=int,
+        default=480,
+        help="Alto solicitado para webcam.",
+    )
+    parser.add_argument(
+        "--ancho-ventana",
+        dest="ancho_ventana",
+        type=int,
+        default=960,
+        help="Ancho maximo de la ventana mostrada.",
+    )
+    parser.add_argument(
+        "--alto-ventana",
+        dest="alto_ventana",
+        type=int,
+        default=600,
+        help="Alto maximo de la ventana mostrada.",
+    )
+    parser.add_argument(
+        "--rotar",
+        choices=("0", "90", "180", "270"),
+        default="0",
+        help="Rota la imagen si la camara sale de lado.",
     )
     return parser.parse_args()
 
@@ -332,16 +382,49 @@ def anotar_fotograma(
     return fotograma, estados
 
 
-def predecir_fotograma(modelo, fotograma, configuracion: ConfiguracionEPP, dispositivo: str):
+def predecir_fotograma(
+    modelo,
+    fotograma,
+    configuracion: ConfiguracionEPP,
+    dispositivo: str,
+    tamano: int,
+):
     resultados = modelo.predict(
         source=fotograma,
         conf=configuracion.umbrales.confianza,
         iou=configuracion.umbrales.iou,
         device=dispositivo,
+        imgsz=tamano,
         verbose=False,
     )
     detecciones = detecciones_desde_resultado(resultados[0], configuracion)
-    return anotar_fotograma(fotograma.copy(), detecciones, configuracion)
+    anotado, estados = anotar_fotograma(fotograma.copy(), detecciones, configuracion)
+    return anotado, estados, detecciones
+
+
+def rotar_fotograma(fotograma, rotacion: str):
+    if rotacion == "90":
+        return cv2.rotate(fotograma, cv2.ROTATE_90_CLOCKWISE)
+    if rotacion == "180":
+        return cv2.rotate(fotograma, cv2.ROTATE_180)
+    if rotacion == "270":
+        return cv2.rotate(fotograma, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return fotograma
+
+
+def ajustar_a_ventana(fotograma, ancho_maximo: int, alto_maximo: int):
+    alto, ancho = fotograma.shape[:2]
+    escala = min(ancho_maximo / ancho, alto_maximo / alto)
+    nuevo_ancho = max(1, int(ancho * escala))
+    nuevo_alto = max(1, int(alto * escala))
+    redimensionado = cv2.resize(
+        fotograma, (nuevo_ancho, nuevo_alto), interpolation=cv2.INTER_AREA
+    )
+    lienzo = np.zeros((alto_maximo, ancho_maximo, 3), dtype=redimensionado.dtype)
+    x = (ancho_maximo - nuevo_ancho) // 2
+    y = (alto_maximo - nuevo_alto) // 2
+    lienzo[y : y + nuevo_alto, x : x + nuevo_ancho] = redimensionado
+    return lienzo
 
 
 def es_fuente_webcam(fuente: str) -> bool:
@@ -355,11 +438,14 @@ def procesar_imagen(
     configuracion: ConfiguracionEPP,
     guardar: bool,
     dispositivo: str,
+    tamano: int,
 ):
     imagen = cv2.imread(str(fuente))
     if imagen is None:
         raise ValueError(f"No se pudo leer la imagen: {fuente}")
-    anotada, estados = predecir_fotograma(modelo, imagen, configuracion, dispositivo)
+    anotada, estados, _ = predecir_fotograma(
+        modelo, imagen, configuracion, dispositivo, tamano
+    )
     if guardar:
         carpeta_salida.mkdir(parents=True, exist_ok=True)
         ruta_salida = carpeta_salida / f"{fuente.stem}_epp.jpg"
@@ -376,10 +462,23 @@ def procesar_video(
     guardar: bool,
     mostrar: bool,
     dispositivo: str,
+    tamano: int,
+    saltar_frames: int,
+    ancho_camara: int | None = None,
+    alto_camara: int | None = None,
+    ancho_ventana: int = 960,
+    alto_ventana: int = 720,
+    rotacion: str = "0",
 ):
     captura = cv2.VideoCapture(fuente)
     if not captura.isOpened():
         raise ValueError(f"No se pudo abrir la fuente de video: {fuente}")
+    if isinstance(fuente, int):
+        captura.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        captura.set(cv2.CAP_PROP_FRAME_WIDTH, ancho_camara or 640)
+        captura.set(cv2.CAP_PROP_FRAME_HEIGHT, alto_camara or 480)
+        captura.set(cv2.CAP_PROP_FPS, 30)
+        captura.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     escritor = None
     if guardar:
@@ -393,17 +492,32 @@ def procesar_video(
         print(f"Guardando video en: {ruta_salida}")
 
     ultimos_estados: list[EstadoTrabajador] = []
+    ultimas_detecciones: list[Deteccion] = []
+    contador_frames = 0
+    saltar_frames = max(1, saltar_frames)
+    nombre_ventana = "Deteccion de Equipo de Proteccion Personal"
+    if mostrar:
+        cv2.namedWindow(nombre_ventana, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(nombre_ventana, ancho_ventana, alto_ventana)
     while True:
         correcto, fotograma = captura.read()
         if not correcto:
             break
-        anotado, ultimos_estados = predecir_fotograma(
-            modelo, fotograma, configuracion, dispositivo
-        )
+        fotograma = rotar_fotograma(fotograma, rotacion)
+        contador_frames += 1
+        if (contador_frames - 1) % saltar_frames == 0 or not ultimas_detecciones:
+            anotado, ultimos_estados, ultimas_detecciones = predecir_fotograma(
+                modelo, fotograma, configuracion, dispositivo, tamano
+            )
+        else:
+            anotado, ultimos_estados = anotar_fotograma(
+                fotograma.copy(), ultimas_detecciones, configuracion
+            )
         if escritor:
             escritor.write(anotado)
         if mostrar:
-            cv2.imshow("Deteccion de Equipo de Proteccion Personal", anotado)
+            vista = ajustar_a_ventana(anotado, ancho_ventana, alto_ventana)
+            cv2.imshow(nombre_ventana, vista)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
@@ -422,6 +536,7 @@ def procesar_carpeta(
     configuracion: ConfiguracionEPP,
     guardar: bool,
     dispositivo: str,
+    tamano: int,
 ):
     imagenes = [
         ruta for ruta in fuente.rglob("*") if ruta.suffix.lower() in EXTENSIONES_IMAGEN
@@ -429,7 +544,9 @@ def procesar_carpeta(
     if not imagenes:
         raise ValueError(f"No se encontraron imagenes en: {fuente}")
     for ruta_imagen in imagenes:
-        procesar_imagen(modelo, ruta_imagen, carpeta_salida, configuracion, guardar, dispositivo)
+        procesar_imagen(
+            modelo, ruta_imagen, carpeta_salida, configuracion, guardar, dispositivo, tamano
+        )
 
 
 def imprimir_resumen(estados: list[EstadoTrabajador]) -> None:
@@ -463,14 +580,37 @@ def main() -> None:
             argumentos.guardar,
             True,
             argumentos.dispositivo,
+            argumentos.tamano,
+            argumentos.saltar_frames,
+            argumentos.ancho_camara,
+            argumentos.alto_camara,
+            argumentos.ancho_ventana,
+            argumentos.alto_ventana,
+            argumentos.rotar,
         )
         return
 
     ruta_fuente = Path(fuente)
     if ruta_fuente.is_dir():
-        procesar_carpeta(modelo, ruta_fuente, carpeta_salida, configuracion, True, argumentos.dispositivo)
+        procesar_carpeta(
+            modelo,
+            ruta_fuente,
+            carpeta_salida,
+            configuracion,
+            True,
+            argumentos.dispositivo,
+            argumentos.tamano,
+        )
     elif ruta_fuente.suffix.lower() in EXTENSIONES_IMAGEN:
-        procesar_imagen(modelo, ruta_fuente, carpeta_salida, configuracion, True, argumentos.dispositivo)
+        procesar_imagen(
+            modelo,
+            ruta_fuente,
+            carpeta_salida,
+            configuracion,
+            True,
+            argumentos.dispositivo,
+            argumentos.tamano,
+        )
     elif ruta_fuente.suffix.lower() in EXTENSIONES_VIDEO:
         procesar_video(
             modelo,
@@ -480,6 +620,11 @@ def main() -> None:
             argumentos.guardar,
             argumentos.mostrar,
             argumentos.dispositivo,
+            argumentos.tamano,
+            argumentos.saltar_frames,
+            ancho_ventana=argumentos.ancho_ventana,
+            alto_ventana=argumentos.alto_ventana,
+            rotacion=argumentos.rotar,
         )
     else:
         raise ValueError(f"Fuente no soportada: {fuente}")

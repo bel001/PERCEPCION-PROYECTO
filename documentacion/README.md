@@ -136,8 +136,8 @@ python main.py entrenar
 python main.py detectar --fuente ruta/imagen.jpg
 ```
 
-Tampoco uses `/bin/python3.13` directamente, porque ese Python no tiene las
-dependencias del proyecto. Usa el Python del entorno virtual activando `.venv`:
+Si existe `.venv`, `main.py` intenta relanzarse automaticamente con el Python
+del entorno virtual. Aun asi, la forma recomendada es activar `.venv`:
 
 ```bash
 cd /home/rodrigo/Escritorio/Codigos/PERCEPCION/epp-yolo
@@ -183,11 +183,47 @@ Validar el modelo entrenado:
 python main.py validar
 ```
 
+Evaluar el modelo y guardar metricas de error:
+
+```bash
+python main.py evaluar --tamano 416 --salida outputs/evaluacion_modelo.json
+```
+
 Abrir la camara con la vista de deteccion:
 
 ```bash
 python main.py camara
 ```
+
+Si la camara se ve lenta, usa modo rapido para CPU:
+
+```bash
+python main.py camara --tamano 320 --saltar-frames 3 --ancho-camara 640 --alto-camara 480 --ancho-ventana 800 --alto-ventana 600
+```
+
+La lentitud ocurre porque el equipo esta ejecutando YOLO en CPU. Cada frame de
+la camara pasa por la red neuronal; mientras mayor sea la resolucion o el
+`--tamano`, mas tarda la inferencia. `--saltar-frames 3` procesa 1 de cada 3
+frames y `--tamano 320` reduce el trabajo del modelo.
+El programa muestra siempre el frame actual de la camara y reutiliza las ultimas
+detecciones entre frames para que la vista no se congele.
+
+Si la imagen de la camara aparece cortada, aumenta o reduce la ventana:
+
+```bash
+python main.py camara --ancho-ventana 800 --alto-ventana 600
+```
+
+La vista mantiene la proporcion de la imagen para evitar recortes.
+
+Si la camara aparece de lado, rota la vista:
+
+```bash
+python main.py camara --rotar 90
+python main.py camara --rotar 270
+```
+
+La imagen se centra automaticamente dentro de la ventana.
 
 Detectar una imagen:
 
@@ -254,7 +290,9 @@ Comandos simplificados con `main.py`:
 python main.py preprocesar --entrada data/raw/huggingface_ppe_extraido --salida data/processed --limpiar-ruido --sobrescribir
 python main.py entrenar --epocas 3 --tamano 416 --lote 4
 python main.py validar
+python main.py evaluar
 python main.py camara
+python main.py camara --tamano 320 --saltar-frames 3
 ```
 
 ## 8. Limpieza de Ruido y Preparacion
@@ -340,7 +378,63 @@ Metricas principales:
 - `mAP50`: precision media con IoU 0.50;
 - `mAP75`: precision media con IoU 0.75.
 
-## 11. Deteccion y Alertas
+## 11. Evaluacion del Modelo y Error
+
+Para evaluar el modelo y guardar un reporte:
+
+```bash
+python main.py evaluar --salida outputs/evaluacion_modelo.json
+```
+
+Para ver el reporte generado:
+
+```bash
+cat outputs/evaluacion_modelo.json
+```
+
+Tambien se puede ejecutar directamente:
+
+```bash
+python -m src.validar \
+  --modelo runs/detect/runs/detect/epp_train-2/weights/best.pt \
+  --datos data/processed/epp.yaml \
+  --tamano 416 \
+  --salida outputs/evaluacion_modelo.json
+```
+
+El reporte se guarda en:
+
+```text
+outputs/evaluacion_modelo.json
+```
+
+Metricas que muestra:
+
+- `precision_media`: de las detecciones realizadas, cuantas fueron correctas en promedio.
+- `recall_medio`: de los objetos reales, cuantos encontro el modelo en promedio.
+- `mAP50`: precision media usando IoU 0.50.
+- `mAP50_95`: metrica mas estricta; evalua varios umbrales IoU.
+- `error_aproximado`: se calcula como `1 - metrica`.
+- `metricas_por_clase`: muestra precision, recall, mAP y error para cada clase.
+- `clase_con_mayor_error_aproximado`: indica la clase con peor resultado.
+
+Ejemplo de interpretacion:
+
+```text
+mAP50 = 0.456
+error aproximado = 1 - 0.456 = 0.544
+```
+
+Ese `0.544` no es un error clasico como en regresion; es una forma simple de
+decir cuanto falta para llegar a 1.0 en la metrica. Mientras mas bajo sea ese
+error aproximado, mejor.
+
+Si el reporte muestra, por ejemplo, que `safety_shoes` tiene el mayor error,
+significa que el modelo esta fallando mas al detectar zapatos de seguridad que
+las otras clases. En ese caso conviene agregar mas imagenes de esa clase,
+revisar etiquetas incorrectas o entrenar mas epocas.
+
+## 12. Deteccion y Alertas
 
 La vista de deteccion muestra:
 
@@ -382,7 +476,7 @@ Las salidas anotadas se guardan en:
 epp-yolo/outputs/
 ```
 
-## 12. Como Funcionan las Reglas
+## 13. Como Funcionan las Reglas
 
 El detector obtiene cajas de YOLO y separa:
 
@@ -402,7 +496,7 @@ epp_obligatorio:
   - gloves
 ```
 
-## 13. Pruebas Recomendadas
+## 14. Pruebas Recomendadas
 
 1. Probar limpieza con un dataset pequeno:
 
@@ -433,7 +527,7 @@ epp_obligatorio:
 6. Cambiar `epp_obligatorio` en `reglas_epp.yaml` y confirmar que la alerta cambia
    sin modificar codigo Python.
 
-## 14. Limitaciones
+## 15. Limitaciones
 
 - Si el dataset no incluye la clase `person`, el sistema puede detectar Equipo de Protección Personal pero
   no podra asignar correctamente infracciones a trabajadores.
@@ -444,7 +538,7 @@ epp_obligatorio:
 - Las alertas visuales son apoyo preventivo; no reemplazan protocolos formales
   de seguridad ocupacional.
 
-## 15. Mejoras Futuras
+## 16. Mejoras Futuras
 
 - Agregar seguimiento de personas entre frames para reducir falsos positivos.
 - Exportar a ONNX o TensorRT para despliegue en edge devices.

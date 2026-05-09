@@ -1,11 +1,27 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 
+RAIZ_PROYECTO = Path(__file__).resolve().parent
+PYTHON_VENV = RAIZ_PROYECTO / ".venv" / "bin" / "python"
 MODELO_PREDETERMINADO = "runs/detect/runs/detect/epp_train-2/weights/best.pt"
+
+
+def relanzar_con_venv_si_existe() -> None:
+    if not PYTHON_VENV.exists():
+        return
+    if Path(sys.prefix).resolve() == (RAIZ_PROYECTO / ".venv").resolve():
+        return
+    python_venv = PYTHON_VENV
+    os.execv(str(python_venv), [str(python_venv), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
+def usar_raiz_del_proyecto() -> None:
+    os.chdir(RAIZ_PROYECTO)
 
 
 def existe_modelo_preentrenado() -> str:
@@ -44,8 +60,18 @@ def leer_argumentos() -> argparse.Namespace:
     validar = subcomandos.add_parser("validar", help="Valida el modelo entrenado.")
     validar.add_argument("--modelo", default=existe_modelo_preentrenado())
     validar.add_argument("--datos", default="data/processed/epp.yaml")
-    validar.add_argument("--tamano", type=int, default=640)
+    validar.add_argument("--tamano", type=int, default=416)
     validar.add_argument("--dispositivo", default="cpu")
+    validar.add_argument("--salida", default="outputs/evaluacion_modelo.json")
+
+    evaluar = subcomandos.add_parser(
+        "evaluar", help="Evalua el modelo y guarda metricas/error en JSON."
+    )
+    evaluar.add_argument("--modelo", default=existe_modelo_preentrenado())
+    evaluar.add_argument("--datos", default="data/processed/epp.yaml")
+    evaluar.add_argument("--tamano", type=int, default=416)
+    evaluar.add_argument("--dispositivo", default="cpu")
+    evaluar.add_argument("--salida", default="outputs/evaluacion_modelo.json")
 
     detectar = subcomandos.add_parser("detectar", help="Detecta en imagen, video o carpeta.")
     detectar.add_argument("--modelo", default=existe_modelo_preentrenado())
@@ -54,11 +80,20 @@ def leer_argumentos() -> argparse.Namespace:
     detectar.add_argument("--guardar", action="store_true")
     detectar.add_argument("--mostrar", action="store_true")
     detectar.add_argument("--dispositivo", default="cpu")
+    detectar.add_argument("--tamano", type=int, default=416)
+    detectar.add_argument("--saltar-frames", type=int, default=1)
 
     camara = subcomandos.add_parser("camara", help="Abre la webcam y muestra la vista.")
     camara.add_argument("--modelo", default=existe_modelo_preentrenado())
     camara.add_argument("--fuente", default="0")
     camara.add_argument("--dispositivo", default="cpu")
+    camara.add_argument("--tamano", type=int, default=416)
+    camara.add_argument("--saltar-frames", type=int, default=2)
+    camara.add_argument("--ancho-camara", type=int, default=640)
+    camara.add_argument("--alto-camara", type=int, default=480)
+    camara.add_argument("--ancho-ventana", type=int, default=800)
+    camara.add_argument("--alto-ventana", type=int, default=600)
+    camara.add_argument("--rotar", choices=("0", "90", "180", "270"), default="0")
 
     return parser.parse_args()
 
@@ -86,6 +121,8 @@ def ejecutar_con_argumentos(modulo: str, argumentos: list[str]) -> None:
 
 
 def main() -> None:
+    relanzar_con_venv_si_existe()
+    usar_raiz_del_proyecto()
     argumentos = leer_argumentos()
 
     if argumentos.comando == "preprocesar":
@@ -124,7 +161,7 @@ def main() -> None:
                 argumentos.nombre,
             ],
         )
-    elif argumentos.comando == "validar":
+    elif argumentos.comando in {"validar", "evaluar"}:
         ejecutar_con_argumentos(
             "validar",
             [
@@ -136,6 +173,8 @@ def main() -> None:
                 str(argumentos.tamano),
                 "--dispositivo",
                 argumentos.dispositivo,
+                "--salida",
+                argumentos.salida,
             ],
         )
     elif argumentos.comando == "detectar":
@@ -155,6 +194,10 @@ def main() -> None:
                 argumentos.salida,
                 "--dispositivo",
                 argumentos.dispositivo,
+                "--tamano",
+                str(argumentos.tamano),
+                "--saltar-frames",
+                str(argumentos.saltar_frames),
                 *opciones,
             ],
         )
@@ -168,6 +211,20 @@ def main() -> None:
                 argumentos.fuente,
                 "--dispositivo",
                 argumentos.dispositivo,
+                "--tamano",
+                str(argumentos.tamano),
+                "--saltar-frames",
+                str(argumentos.saltar_frames),
+                "--ancho-camara",
+                str(argumentos.ancho_camara),
+                "--alto-camara",
+                str(argumentos.alto_camara),
+                "--ancho-ventana",
+                str(argumentos.ancho_ventana),
+                "--alto-ventana",
+                str(argumentos.alto_ventana),
+                "--rotar",
+                argumentos.rotar,
             ],
         )
 
