@@ -1,0 +1,71 @@
+# Configuracion principal del sistema de deteccion de Equipo de Protección Personal.
+# Cambia estos valores para adaptar el proyecto sin tocar el codigo.
+
+nombres:
+  0: person
+  1: helmet
+  2: vest
+  3: gloves
+  4: goggles
+  5: mask
+  6: safety_shoes
+  7: no_helmet
+  8: no_vest
+
+epp_obligatorio:
+  - helmet
+  - vest
+
+umbrales:
+  confianza: 0.35
+  iou: 0.45
+  iou_asociacion: 0.02
+  margen_centro_asociacion: 0.15
+
+alertas:
+  habilitada: true
+  color_seguro: [0, 180, 0]
+  color_peligro: [0, 0, 255]
+  color_epp: [255, 170, 0]
+  escala_texto: 0.65
+  grosor_texto: 2
+
+alias_clases:
+  worker: person
+  person: person
+  pedestrian: person
+  hardhat: helmet
+  hard_hat: helmet
+  safety_helmet: helmet
+  helmet: helmet
+  casque: helmet
+  head_with_helmet: helmet
+  hi-viz helmet: helmet
+  no-hardhat: no_helmet
+  no_hardhat: no_helmet
+  no helmet: no_helmet
+  no_helmet: no_helmet
+  head: no_helmet
+  vest: vest
+  safety_vest: vest
+  safety vest: vest
+  reflective_vest: vest
+  hi-viz vest: vest
+  hi_vis_vest: vest
+  no vest: no_vest
+  no_vest: no_vest
+  gloves: gloves
+  glove: gloves
+  goggles: goggles
+  glasses: goggles
+  mask: mask
+  masks: mask
+  safety shoe: safety_shoes
+  safety_shoe: safety_shoes
+  safety shoes: safety_shoes
+  boots: safety_shoes
+  shoes: safety_shoes
+
+clases_negativas:
+  helmet: no_helmet
+  vest: no_vest

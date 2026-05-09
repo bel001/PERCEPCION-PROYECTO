@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+epp-yolo/.venv/
+epp-yolo/__pycache__/
+epp-yolo/src/__pycache__/
+epp-yolo/data/raw/*
+epp-yolo/data/processed/*
+epp-yolo/outputs/*
+epp-yolo/runs/*
+epp-yolo/*.pt
+
+!epp-yolo/data/raw/.gitkeep
+!epp-yolo/data/processed/.gitkeep
+!epp-yolo/outputs/.gitkeep
