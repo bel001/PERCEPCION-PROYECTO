@@ -8,7 +8,8 @@ from pathlib import Path
 
 RAIZ_PROYECTO = Path(__file__).resolve().parent
 PYTHON_VENV = RAIZ_PROYECTO / ".venv" / "bin" / "python"
-MODELO_PREDETERMINADO = "runs/detect/runs/detect/epp_train-2/weights/best.pt"
+MODELO_PREDETERMINADO = "runs/detect/epp_sh17/weights/best.pt"
+YAML_PREDETERMINADO = "data/processed/sh17/epp.yaml"
 
 
 def relanzar_con_venv_si_existe() -> None:
@@ -27,13 +28,28 @@ def usar_raiz_del_proyecto() -> None:
 def existe_modelo_preentrenado() -> str:
     candidatos = [
         MODELO_PREDETERMINADO,
-        "runs/detect/epp_train/weights/best.pt",
-        "runs/detect/epp_train-2/weights/best.pt",
+        "runs/detect/epp_sh17_prueba/weights/best.pt",
     ]
     for candidato in candidatos:
         if Path(candidato).exists():
             return candidato
     return MODELO_PREDETERMINADO
+
+
+def existe_yaml_dataset() -> str:
+    candidatos = [
+        "data/processed/sh17/epp.yaml",
+        YAML_PREDETERMINADO,
+        "data/raw/sh17/yolo/data.yaml",
+        "data/dataset_auto.yaml",
+        "data/data.yaml",
+        "data/dataset.yaml",
+        "data/raw/data.yaml",
+    ]
+    for candidato in candidatos:
+        if Path(candidato).exists():
+            return candidato
+    return YAML_PREDETERMINADO
 
 
 def leer_argumentos() -> argparse.Namespace:
@@ -43,23 +59,41 @@ def leer_argumentos() -> argparse.Namespace:
     subcomandos = parser.add_subparsers(dest="comando", required=True)
 
     preprocesar = subcomandos.add_parser("preprocesar", help="Limpia y prepara el dataset.")
-    preprocesar.add_argument("--entrada", default="data/raw/huggingface_ppe_extraido")
-    preprocesar.add_argument("--salida", default="data/processed")
+    preprocesar.add_argument("--entrada", default="data/raw/sh17/yolo")
+    preprocesar.add_argument("--salida", default="data/processed/sh17_limpio")
     preprocesar.add_argument("--limpiar-ruido", action="store_true")
     preprocesar.add_argument("--sobrescribir", action="store_true")
 
+    revisar_dataset = subcomandos.add_parser(
+        "revisar-dataset", help="Revisa si data/ esta bien importado para YOLO."
+    )
+    revisar_dataset.add_argument("--ruta", default="data")
+    revisar_dataset.add_argument("--crear-yaml", action="store_true")
+    revisar_dataset.add_argument("--salida", default="data/dataset_auto.yaml")
+
+    preparar_sh17 = subcomandos.add_parser(
+        "preparar-sh17", help="Prepara el dataset SH17 descargado en data/raw/sh17."
+    )
+    preparar_sh17.add_argument("--origen", default="data/raw/sh17/original")
+    preparar_sh17.add_argument("--salida", default="data/raw/sh17/yolo")
+    preparar_sh17.add_argument("--sobrescribir", action="store_true")
+    preparar_sh17.add_argument("--copiar", action="store_true")
+    preparar_sh17.add_argument("--salida-procesada", default="data/processed/sh17")
+    preparar_sh17.add_argument("--sin-procesada", action="store_true")
+    preparar_sh17.add_argument("--configuracion", default=None)
+
     entrenar = subcomandos.add_parser("entrenar", help="Entrena el modelo YOLO.")
-    entrenar.add_argument("--datos", default="data/processed/epp.yaml")
+    entrenar.add_argument("--datos", default=existe_yaml_dataset())
     entrenar.add_argument("--modelo", default="yolo11n.pt")
     entrenar.add_argument("--epocas", type=int, default=3)
     entrenar.add_argument("--tamano", type=int, default=416)
     entrenar.add_argument("--lote", type=int, default=4)
     entrenar.add_argument("--dispositivo", default="cpu")
-    entrenar.add_argument("--nombre", default="epp_train")
+    entrenar.add_argument("--nombre", default="epp_sh17")
 
     validar = subcomandos.add_parser("validar", help="Valida el modelo entrenado.")
     validar.add_argument("--modelo", default=existe_modelo_preentrenado())
-    validar.add_argument("--datos", default="data/processed/epp.yaml")
+    validar.add_argument("--datos", default=existe_yaml_dataset())
     validar.add_argument("--tamano", type=int, default=416)
     validar.add_argument("--dispositivo", default="cpu")
     validar.add_argument("--salida", default="outputs/evaluacion_modelo.json")
@@ -68,7 +102,7 @@ def leer_argumentos() -> argparse.Namespace:
         "evaluar", help="Evalua el modelo y guarda metricas/error en JSON."
     )
     evaluar.add_argument("--modelo", default=existe_modelo_preentrenado())
-    evaluar.add_argument("--datos", default="data/processed/epp.yaml")
+    evaluar.add_argument("--datos", default=existe_yaml_dataset())
     evaluar.add_argument("--tamano", type=int, default=416)
     evaluar.add_argument("--dispositivo", default="cpu")
     evaluar.add_argument("--salida", default="outputs/evaluacion_modelo.json")
@@ -108,6 +142,14 @@ def ejecutar_con_argumentos(modulo: str, argumentos: list[str]) -> None:
         from src.entrenar import main as ejecutar_entrenamiento
 
         ejecutar_entrenamiento()
+    elif modulo == "revisar_dataset":
+        from src.revisar_dataset import main as ejecutar_revision_dataset
+
+        ejecutar_revision_dataset()
+    elif modulo == "preparar_sh17":
+        from src.preparar_sh17 import main as ejecutar_preparacion_sh17
+
+        ejecutar_preparacion_sh17()
     elif modulo == "validar":
         from src.validar import main as ejecutar_validacion
 
@@ -138,6 +180,42 @@ def main() -> None:
                 argumentos.entrada,
                 "--salida",
                 argumentos.salida,
+                *opciones,
+            ],
+        )
+    elif argumentos.comando == "revisar-dataset":
+        opciones = []
+        if argumentos.crear_yaml:
+            opciones.append("--crear-yaml")
+        ejecutar_con_argumentos(
+            "revisar_dataset",
+            [
+                "--ruta",
+                argumentos.ruta,
+                "--salida",
+                argumentos.salida,
+                *opciones,
+            ],
+        )
+    elif argumentos.comando == "preparar-sh17":
+        opciones = []
+        if argumentos.sobrescribir:
+            opciones.append("--sobrescribir")
+        if argumentos.copiar:
+            opciones.append("--copiar")
+        if argumentos.sin_procesada:
+            opciones.append("--sin-procesada")
+        if argumentos.configuracion:
+            opciones.extend(["--configuracion", argumentos.configuracion])
+        ejecutar_con_argumentos(
+            "preparar_sh17",
+            [
+                "--origen",
+                argumentos.origen,
+                "--salida",
+                argumentos.salida,
+                "--salida-procesada",
+                argumentos.salida_procesada,
                 *opciones,
             ],
         )
@@ -230,4 +308,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except FileNotFoundError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        sys.exit(1)

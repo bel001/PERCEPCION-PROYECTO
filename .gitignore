@@ -6,12 +6,16 @@ __pycache__/
 epp-yolo/.venv/
 epp-yolo/__pycache__/
 epp-yolo/src/__pycache__/
+epp-yolo/data/*
 epp-yolo/data/raw/*
 epp-yolo/data/processed/*
 epp-yolo/outputs/*
 epp-yolo/runs/*
 epp-yolo/*.pt
 
+!epp-yolo/data/README.md
+!epp-yolo/data/raw/
 !epp-yolo/data/raw/.gitkeep
+!epp-yolo/data/processed/
 !epp-yolo/data/processed/.gitkeep
 !epp-yolo/outputs/.gitkeep

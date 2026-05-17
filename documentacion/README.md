@@ -44,6 +44,8 @@ PERCEPCION/
     ├── outputs/
     ├── src/
     │   ├── configuracion.py
+    │   ├── revisar_dataset.py
+    │   ├── preparar_sh17.py
     │   ├── preprocesar.py
     │   ├── entrenar.py
     │   ├── validar.py
@@ -63,13 +65,32 @@ descargados dentro de:
 epp-yolo/data/raw/
 ```
 
-Estado actual del proyecto: el dataset no esta incluido en la carpeta. La
-carpeta `epp-yolo/data/raw/` esta vacia y sirve como destino para pegar ahi los
-datasets descargados. La carpeta `epp-yolo/data/processed/` se genera despues de
-ejecutar la limpieza.
+Estado actual del proyecto: el dataset no se sube a Git porque es pesado, pero
+en esta maquina ya quedo descargado y preparado SH17 dentro de `epp-yolo/data/`.
+Si se clona el repositorio en otra maquina, se debe descargar SH17 desde Kaggle
+y dejarlo en la estructura indicada abajo.
+
+Estructura local esperada para SH17:
+
+```text
+epp-yolo/data/raw/sh17/sh17_kaggle.zip
+epp-yolo/data/raw/sh17/original/images/
+epp-yolo/data/raw/sh17/original/labels/
+epp-yolo/data/raw/sh17/original/train_files.txt
+epp-yolo/data/raw/sh17/original/val_files.txt
+epp-yolo/data/raw/sh17/yolo/
+epp-yolo/data/processed/sh17/epp.yaml
+```
+
+El archivo recomendado para entrenar es:
+
+```text
+epp-yolo/data/processed/sh17/epp.yaml
+```
 
 Fuentes recomendadas:
 
+- SH17 Dataset for PPE Detection: https://www.kaggle.com/datasets/mugheesahmad/sh17-dataset-for-ppe-detection
 - Hugging Face PPE Detection: https://huggingface.co/datasets/51ddhesh/PPE_Detection
 - Mendeley PPE 5-Class: https://data.mendeley.com/datasets/8vf7z6v5sb/1
 - Roboflow Hard Hat Universe: https://universe.roboflow.com/ppe-demo/hard-hat-universe-0dy7t-enpal
@@ -81,15 +102,16 @@ Peso aproximado de los datasets:
 
 | Fuente | Peso aproximado | Nota |
 | --- | ---: | --- |
+| SH17 Dataset for PPE Detection | 14 GB | Dataset principal recomendado; incluye `person`, `helmet`, `safety-vest`, `gloves`, `shoes`, etc. |
 | Hugging Face PPE Detection | 668 MB | Archivo principal `PPE.zip`. |
 | Mendeley PPE 5-Class | 124 MB | Total aproximado sumando archivos publicos de la version 1. |
 | Roboflow Hard Hat Universe | No publicado | La pagina indica 7,036 imagenes; el peso depende del formato de exportacion. |
 | Mendeley Dataset of PPE | 236 MB | Archivo `20250731-PPE2286y.zip`. |
 | CHV / Real-time PPE dataset | 440 MB | Archivo `CHV_dataset.zip` desde Google Drive. |
 
-En total, sin contar Roboflow, se debe reservar aproximadamente 1.47 GB solo
-para archivos comprimidos. Descomprimidos y preprocesados pueden ocupar mas
-espacio.
+SH17 es mas pesado que las otras fuentes, pero es la mejor opcion para este
+proyecto porque incluye personas/trabajadores y varios elementos de Equipo de
+Protección Personal.
 
 Recomendacion practica: combinar fuentes ayuda a mejorar la efectividad, pero
 solo despues de normalizar nombres de clases. Por ejemplo, distintos datasets
@@ -133,6 +155,8 @@ Debe incluir un subcomando:
 python main.py camara
 python main.py validar
 python main.py entrenar
+python main.py preparar-sh17
+python main.py revisar-dataset --ruta data
 python main.py detectar --fuente ruta/imagen.jpg
 ```
 
@@ -153,28 +177,39 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Descomprimir el dataset descargado:
+Preparar el dataset SH17 ya descargado y extraido en
+`data/raw/sh17/original/`:
 
 ```bash
-unzip data/raw/huggingface_ppe/PPE.zip -d data/raw/huggingface_ppe_extraido
+python main.py preparar-sh17 --sobrescribir
 ```
 
-Preprocesar y limpiar imagenes:
+Revisar si el dataset quedo bien importado y normalizado:
 
 ```bash
-python main.py preprocesar --entrada data/raw/huggingface_ppe_extraido --salida data/processed --limpiar-ruido --sobrescribir
+python main.py revisar-dataset --ruta data/processed/sh17
+```
+
+Si el comando indica que no encontro `data.yaml/epp.yaml` ni la estructura
+`train/images` + `train/labels`, la carpeta importada no esta lista para YOLO.
+Debes volver a extraer o copiar la carpeta correcta del dataset.
+
+Archivo YAML recomendado para entrenar:
+
+```text
+data/processed/sh17/epp.yaml
 ```
 
 Entrenar rapido para probar el flujo:
 
 ```bash
-python main.py entrenar --epocas 3 --tamano 416 --lote 4
+python main.py entrenar --datos data/processed/sh17/epp.yaml --epocas 3 --tamano 416 --lote 4
 ```
 
 Entrenar con mejor calidad, pero mas lento:
 
 ```bash
-python main.py entrenar --epocas 50 --tamano 640 --lote 8
+python main.py entrenar --datos data/processed/sh17/epp.yaml --epocas 50 --tamano 640 --lote 8
 ```
 
 Validar el modelo entrenado:
@@ -240,13 +275,13 @@ python main.py detectar --fuente ruta/video.mp4 --guardar
 Si se desea usar directamente el modelo entrenado actual, su ruta es:
 
 ```text
-runs/detect/runs/detect/epp_train-2/weights/best.pt
+runs/detect/epp_sh17/weights/best.pt
 ```
 
 Comando directo equivalente para abrir camara con ese modelo:
 
 ```bash
-python -m src.detectar --modelo runs/detect/runs/detect/epp_train-2/weights/best.pt --fuente 0 --dispositivo cpu
+python -m src.detectar --modelo runs/detect/epp_sh17/weights/best.pt --fuente 0 --dispositivo cpu
 ```
 
 ## 7. Capas del Pipeline
@@ -260,12 +295,12 @@ data/raw/
 Capa 1: preprocesamiento y limpieza de imagenes
   src/preprocesar.py
   ↓
-data/processed/epp.yaml
+data/processed/sh17/epp.yaml
   ↓
 Capa 2: entrenamiento del modelo YOLO
   src/entrenar.py
   ↓
-runs/detect/epp_train/weights/best.pt
+runs/detect/epp_sh17/weights/best.pt
   ↓
 Capa 3: validacion de metricas
   src/validar.py
@@ -280,15 +315,16 @@ Resumen de cada capa:
 
 - Main: `main.py` centraliza los comandos principales del proyecto.
 - Preprocesamiento: limpia ruido, mejora iluminacion, valida imagenes y normaliza etiquetas.
-- Entrenamiento: usa `data/processed/epp.yaml` para entrenar YOLO.
+- Entrenamiento: usa `data/processed/sh17/epp.yaml` para entrenar YOLO.
 - Validacion: calcula metricas como `mAP50`, `mAP75` y `mAP50-95`.
 - Deteccion: usa el modelo entrenado para detectar Equipo de Protección Personal y generar alertas.
 
 Comandos simplificados con `main.py`:
 
 ```bash
-python main.py preprocesar --entrada data/raw/huggingface_ppe_extraido --salida data/processed --limpiar-ruido --sobrescribir
-python main.py entrenar --epocas 3 --tamano 416 --lote 4
+python main.py preparar-sh17 --sobrescribir
+python main.py revisar-dataset --ruta data/processed/sh17
+python main.py entrenar --datos data/processed/sh17/epp.yaml --epocas 3 --tamano 416 --lote 4
 python main.py validar
 python main.py evaluar
 python main.py camara
@@ -306,18 +342,18 @@ Realiza estas tareas:
 - mejora contraste e iluminacion con CLAHE;
 - redimensiona imagenes manteniendo proporcion;
 - copia y normaliza etiquetas YOLO;
-- genera `data/processed/epp.yaml` para entrenar con Ultralytics.
+- genera un `epp.yaml` dentro de la carpeta de salida para entrenar con Ultralytics.
 
 Comando base:
 
 ```bash
-python -m src.preprocesar --entrada data/raw --salida data/processed --sobrescribir
+python -m src.preprocesar --entrada data/raw/sh17/yolo --salida data/processed/sh17_limpio --sobrescribir
 ```
 
 Con reduccion de ruido mas fuerte:
 
 ```bash
-python -m src.preprocesar --entrada data/raw --salida data/processed --limpiar-ruido --sobrescribir
+python -m src.preprocesar --entrada data/raw/sh17/yolo --salida data/processed/sh17_limpio --limpiar-ruido --sobrescribir
 ```
 
 Formato esperado por dataset:
@@ -341,14 +377,14 @@ dataset/
 Despues de procesar datos:
 
 ```bash
-python -m src.entrenar --datos data/processed/epp.yaml --modelo yolo11n.pt
+python -m src.entrenar --datos data/processed/sh17/epp.yaml --modelo yolo11n.pt
 ```
 
 Opciones utiles:
 
 ```bash
 python -m src.entrenar \
-  --datos data/processed/epp.yaml \
+  --datos data/processed/sh17/epp.yaml \
   --modelo yolo11n.pt \
   --epocas 80 \
   --tamano 640 \
@@ -359,7 +395,7 @@ python -m src.entrenar \
 El modelo entrenado quedara normalmente en:
 
 ```text
-runs/detect/epp_train/weights/best.pt
+runs/detect/epp_sh17/weights/best.pt
 ```
 
 ## 10. Validacion
@@ -368,8 +404,8 @@ Para medir el rendimiento:
 
 ```bash
 python -m src.validar \
-  --modelo runs/detect/epp_train/weights/best.pt \
-  --datos data/processed/epp.yaml
+  --modelo runs/detect/epp_sh17/weights/best.pt \
+  --datos data/processed/sh17/epp.yaml
 ```
 
 Metricas principales:
@@ -396,8 +432,8 @@ Tambien se puede ejecutar directamente:
 
 ```bash
 python -m src.validar \
-  --modelo runs/detect/runs/detect/epp_train-2/weights/best.pt \
-  --datos data/processed/epp.yaml \
+  --modelo runs/detect/epp_sh17/weights/best.pt \
+  --datos data/processed/sh17/epp.yaml \
   --tamano 416 \
   --salida outputs/evaluacion_modelo.json
 ```
@@ -446,20 +482,20 @@ La vista de deteccion muestra:
 Webcam:
 
 ```bash
-python -m src.detectar --modelo runs/detect/epp_train/weights/best.pt --fuente 0
+python -m src.detectar --modelo runs/detect/epp_sh17/weights/best.pt --fuente 0
 ```
 
 Imagen:
 
 ```bash
-python -m src.detectar --modelo runs/detect/epp_train/weights/best.pt --fuente ruta/imagen.jpg
+python -m src.detectar --modelo runs/detect/epp_sh17/weights/best.pt --fuente ruta/imagen.jpg
 ```
 
 Video:
 
 ```bash
 python -m src.detectar \
-  --modelo runs/detect/epp_train/weights/best.pt \
+  --modelo runs/detect/epp_sh17/weights/best.pt \
   --fuente ruta/video.mp4 \
   --guardar
 ```
@@ -467,7 +503,7 @@ python -m src.detectar \
 Carpeta de imagenes:
 
 ```bash
-python -m src.detectar --modelo runs/detect/epp_train/weights/best.pt --fuente ruta/imagenes
+python -m src.detectar --modelo runs/detect/epp_sh17/weights/best.pt --fuente ruta/imagenes
 ```
 
 Las salidas anotadas se guardan en:
@@ -498,28 +534,29 @@ epp_obligatorio:
 
 ## 14. Pruebas Recomendadas
 
-1. Probar limpieza con un dataset pequeno:
+1. Confirmar que SH17 esta listo para YOLO:
 
    ```bash
-   python -m src.preprocesar --entrada data/raw --salida data/processed --sobrescribir
+   python main.py revisar-dataset --ruta data/processed/sh17
    ```
 
-2. Confirmar que existen imagenes y etiquetas:
+2. Confirmar que existen imagenes y etiquetas. Se usa `-L` porque SH17 queda
+   preparado con enlaces simbolicos para no duplicar 14 GB de imagenes:
 
    ```bash
-   find data/processed -type f | head
+   find -L data/processed/sh17 -type f | head
    ```
 
 3. Entrenar pocas epocas para validar el pipeline:
 
    ```bash
-   python -m src.entrenar --datos data/processed/epp.yaml --modelo yolo11n.pt --epocas 1
+   python -m src.entrenar --datos data/processed/sh17/epp.yaml --modelo yolo11n.pt --epocas 1
    ```
 
 4. Validar metricas:
 
    ```bash
-   python -m src.validar --modelo runs/detect/epp_train/weights/best.pt --datos data/processed/epp.yaml
+   python -m src.validar --modelo runs/detect/epp_sh17/weights/best.pt --datos data/processed/sh17/epp.yaml
    ```
 
 5. Probar deteccion con imagen, video y webcam.

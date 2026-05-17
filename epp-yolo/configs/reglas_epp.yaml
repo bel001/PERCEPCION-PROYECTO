@@ -60,6 +60,9 @@ alias_clases:
   glasses: goggles
   mask: mask
   masks: mask
+  face_mask: mask
+  face mask: mask
+  face-mask: mask
   safety shoe: safety_shoes
   safety_shoe: safety_shoes
   safety shoes: safety_shoes

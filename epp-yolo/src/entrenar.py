@@ -4,6 +4,20 @@ import argparse
 from pathlib import Path
 
 
+def resolver_yaml_dataset(ruta_datos: Path) -> Path:
+    if ruta_datos.is_file():
+        return ruta_datos
+    if ruta_datos.is_dir():
+        for nombre in ("epp.yaml", "data.yaml", "dataset.yaml", "dataset_auto.yaml"):
+            candidato = ruta_datos / nombre
+            if candidato.exists():
+                return candidato
+    raise FileNotFoundError(
+        f"No existe el archivo de datos: {ruta_datos}\n"
+        "Ejecuta primero: python main.py revisar-dataset --ruta data"
+    )
+
+
 def leer_argumentos() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Entrena YOLO para detectar Equipo de Protección Personal."
@@ -64,7 +78,7 @@ def leer_argumentos() -> argparse.Namespace:
         "--nombre",
         "--name",
         dest="nombre",
-        default="epp_train",
+        default="epp_sh17",
         help="Nombre del experimento.",
     )
     return parser.parse_args()
@@ -72,9 +86,7 @@ def leer_argumentos() -> argparse.Namespace:
 
 def main() -> None:
     argumentos = leer_argumentos()
-    ruta_datos = Path(argumentos.datos)
-    if not ruta_datos.exists():
-        raise FileNotFoundError(f"No existe el archivo de datos: {ruta_datos}")
+    ruta_datos = resolver_yaml_dataset(Path(argumentos.datos))
     carpeta_proyecto = Path(argumentos.proyecto)
     if not carpeta_proyecto.is_absolute():
         carpeta_proyecto = Path.cwd() / carpeta_proyecto

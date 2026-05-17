@@ -5,6 +5,20 @@ import json
 from pathlib import Path
 
 
+def resolver_yaml_dataset(ruta_datos: Path) -> Path:
+    if ruta_datos.is_file():
+        return ruta_datos
+    if ruta_datos.is_dir():
+        for nombre in ("epp.yaml", "data.yaml", "dataset.yaml", "dataset_auto.yaml"):
+            candidato = ruta_datos / nombre
+            if candidato.exists():
+                return candidato
+    raise FileNotFoundError(
+        f"No existe el dataset YAML: {ruta_datos}\n"
+        "Ejecuta primero: python main.py revisar-dataset --ruta data"
+    )
+
+
 def leer_argumentos() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Valida un modelo YOLO entrenado.")
     parser.add_argument(
@@ -125,11 +139,9 @@ def construir_reporte(metricas, ruta_modelo: Path, ruta_datos: Path) -> dict:
 def main() -> None:
     argumentos = leer_argumentos()
     ruta_modelo = Path(argumentos.modelo)
-    ruta_datos = Path(argumentos.datos)
+    ruta_datos = resolver_yaml_dataset(Path(argumentos.datos))
     if not ruta_modelo.exists() and not str(ruta_modelo).startswith("yolo"):
         raise FileNotFoundError(f"No existe el modelo: {ruta_modelo}")
-    if not ruta_datos.exists():
-        raise FileNotFoundError(f"No existe el dataset YAML: {ruta_datos}")
 
     from ultralytics import YOLO
 
